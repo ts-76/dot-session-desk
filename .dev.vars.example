@@ -1,0 +1,4 @@
+# Public template: data routes are intentionally disabled.
+SESSION_DESK_AUTH_BOUNDARY=disabled
+SESSION_DESK_ORIGIN=https://example.invalid
+SESSION_DESK_ENABLE_BRIDGE=false

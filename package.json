@@ -1,0 +1,50 @@
+{
+  "name": "dot-session-desk",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "node scripts/run-framework.mjs dev",
+    "build": "node scripts/run-framework.mjs build",
+    "check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test worker.test.js tests/*.test.ts",
+    "test:browser": "playwright test",
+    "db:generate": "drizzle-kit generate",
+    "format:check": "prettier --check app components lib/server lib/client lib/types.ts tests/*.test.ts tests/browser playwright.config.ts",
+    "setup:local": "node scripts/setup-local.mjs",
+    "scan:secrets": "node scripts/scan-secrets.mjs"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "next": "16.3.4",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.37.1",
+    "@cloudflare/workers-types": "4.20260515.1",
+    "@playwright/test": "^1.58.0",
+    "@secretlint/secretlint-rule-preset-recommend": "13.0.6",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.26",
+    "drizzle-kit": "0.31.10",
+    "prettier": "3.6.2",
+    "react-server-dom-webpack": "19.2.6",
+    "secretlint": "13.0.6",
+    "typescript": "5.9.3",
+    "vinext": "1.0.0-beta.5",
+    "vite": "8.0.13",
+    "wrangler": "4.92.0"
+  },
+  "type": "module",
+  "overrides": {
+    "miniflare": {
+      "sharp": "0.35.4"
+    }
+  }
+}
