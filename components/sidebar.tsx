@@ -12,6 +12,7 @@ export function Sidebar({
   seen,
   onSelect,
   onCreate,
+  onClose,
   busy,
 }: {
   sessions: Session[];
@@ -23,15 +24,29 @@ export function Sidebar({
   seen: Record<string, string>;
   onSelect: (id: string) => void;
   onCreate: (title: string) => Promise<void>;
+  onClose: () => void;
   busy: boolean;
 }) {
   const [title, setTitle] = useState(""),
     [open, setOpen] = useState(false);
   const items = visibleSessions(sessions, filter, search);
   return (
-    <aside>
+    <aside aria-label="会話一覧">
       <div className="aside-heading">
-        WORKSPACE <span>会話</span>
+        <span className="aside-title">
+          WORKSPACE <span id="session-sidebar-title">会話</span>
+        </span>
+        <button
+          id="sidebar-close"
+          className="sidebar-close"
+          type="button"
+          aria-label="会話一覧を閉じる"
+          onClick={onClose}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="m6 6 12 12M6 18 18 6" />
+          </svg>
+        </button>
       </div>
       <div className="search-wrap">
         <label htmlFor="search" className="sr-only">

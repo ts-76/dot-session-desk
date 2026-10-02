@@ -31,6 +31,7 @@ async function fixture(page: Page) {
     ],
     slow: false,
     failSend: false,
+    failCreate: false,
   };
   await page.route("**/api/**", async (route) => {
     const req = route.request(),
@@ -40,6 +41,8 @@ async function fixture(page: Page) {
       return route.fulfill({ json: { connected: true } });
     if (path === "/api/threads") {
       if (req.method() === "POST") {
+        if (state.failCreate)
+          return route.fulfill({ status: 503, json: { error: "temporary" } });
         const t = { id: "new", ...req.postDataJSON(), messages: [] };
         state.threads.push(t);
         return route.fulfill({ json: t });
@@ -257,4 +260,267 @@ test("desktop screenshot and browser load has no runtime errors", async ({
   await ready(page);
   await page.screenshot({ path: "evidence/react-desktop.png", fullPage: true });
   expect(errors).toEqual([]);
+});
+
+test("mobile sidebar is closed by default and dismisses with focus restored", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await fixture(page);
+  await ready(page);
+  const toggle = page.getByRole("button", {
+    name: "会話一覧を開く",
+    exact: true,
+  });
+  const panel = page.locator("#session-sidebar");
+  await expect(panel).not.toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(toggle).toHaveAttribute("aria-controls", "session-sidebar");
+  const bounds = await page.locator("main").boundingBox();
+  expect(bounds!.y).toBe(50);
+  expect(bounds!.height).toBeGreaterThan(750);
+  await toggle.click();
+  const dialog = page.getByRole("dialog", { name: "会話", exact: true });
+  const close = dialog.getByRole("button", {
+    name: "会話一覧を閉じる",
+    exact: true,
+  });
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(close).toBeFocused();
+  await expect(page.locator("header")).toHaveAttribute("inert", "");
+  await expect(page.locator("main")).toHaveAttribute("inert", "");
+  await expect(page.locator("footer")).toHaveAttribute("inert", "");
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe(
+    "hidden",
+  );
+  await page.keyboard.press("Shift+Tab");
+  await expect(
+    dialog.getByRole("button", { name: "開発メモ、未開始" }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await page.locator("#message").evaluate((element) => element.focus());
+  await expect(close).toBeFocused();
+  const scrollTop = await page
+    .locator("#scroll-area")
+    .evaluate((element) => element.scrollTop);
+  await page.mouse.move(370, 400);
+  await page.mouse.wheel(0, 500);
+  expect(
+    await page.locator("#scroll-area").evaluate((element) => element.scrollTop),
+  ).toBe(scrollTop);
+  await page.keyboard.press("Escape");
+  await expect(panel).not.toBeVisible();
+  await expect(toggle).toBeFocused();
+  await expect(page.locator("main")).not.toHaveAttribute("inert", "");
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+  await toggle.click();
+  await page
+    .locator(".sidebar-backdrop")
+    .click({ position: { x: 370, y: 200 } });
+  await expect(panel).not.toBeVisible();
+  await expect(toggle).toBeFocused();
+  // Some touch browsers do not focus a button when it is tapped.
+  await page.locator("#message").focus();
+  await toggle.evaluate((button) =>
+    button.addEventListener("mousedown", (event) => event.preventDefault(), {
+      once: true,
+    }),
+  );
+  await toggle.click();
+  await close.click();
+  await expect(panel).not.toBeVisible();
+  await expect(toggle).toBeFocused();
+});
+
+test("mobile session selection and creation close the sidebar while keeping drafts and failures", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await fixture(page);
+  await ready(page);
+  const toggle = page.getByRole("button", {
+    name: "会話一覧を開く",
+    exact: true,
+  });
+  const panel = page.locator("#session-sidebar");
+  await page.locator("#message").fill("設計の下書き");
+  await toggle.click();
+  await page.getByRole("button", { name: "開発メモ、未開始" }).click();
+  await expect(panel).not.toBeVisible();
+  await expect(page.getByRole("heading", { name: "開発メモ" })).toBeVisible();
+  await page.locator("#message").fill("開発の下書き");
+  await toggle.click();
+  await page.getByRole("button", { name: "設計相談、返信済み" }).click();
+  await expect(panel).not.toBeVisible();
+  await expect(page.locator("#message")).toHaveValue("設計の下書き");
+  await toggle.click();
+  await page.getByRole("button", { name: "設計相談、返信済み" }).click();
+  await expect(panel).not.toBeVisible();
+  await toggle.click();
+  await page.getByRole("button", { name: "ゴミ箱", exact: true }).click();
+  await page.getByText("＋ 新しい会話").click();
+  await page.locator("#new-title").fill("モバイル新規会話");
+  state.failCreate = true;
+  await page.getByRole("button", { name: "作成", exact: true }).click();
+  await expect(panel).toBeVisible();
+  await expect(page.locator("#new-title")).toHaveValue("モバイル新規会話");
+  state.failCreate = false;
+  await page.getByRole("button", { name: "作成", exact: true }).click();
+  await expect(panel).not.toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "モバイル新規会話" }),
+  ).toBeVisible();
+  await toggle.click();
+  await expect(
+    page.getByRole("button", { name: "会話", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("会話を探す")).toHaveValue("");
+});
+
+test("mobile sidebar retains state on resize and shortcuts open the correct field", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await fixture(page);
+  await ready(page);
+  const panel = page.locator("#session-sidebar");
+  await page.locator("#message").focus();
+  await page.keyboard.press("Control+k");
+  await expect(panel).toBeVisible();
+  await expect(page.getByLabel("会話を探す")).toBeFocused();
+  await page.getByLabel("会話を探す").fill("設計");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#message")).toBeFocused();
+  await page.keyboard.press("Control+Shift+o");
+  await expect(page.locator("#new-title")).toBeFocused();
+  await page.locator("#new-title").fill("入力途中");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(panel).toBeVisible();
+  await expect(panel).not.toHaveAttribute("role", "dialog");
+  await expect(page.locator(".sidebar-backdrop")).toHaveCount(0);
+  await expect(page.locator("main")).not.toHaveAttribute("inert", "");
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+  await expect(page.locator("#new-title")).toHaveValue("入力途中");
+  await expect(page.getByLabel("会話を探す")).toHaveValue("設計");
+  await expect(
+    page.getByRole("button", { name: "会話一覧を開く", exact: true }),
+  ).not.toBeVisible();
+  await page.getByLabel("会話を探す").focus();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(panel).not.toBeVisible();
+  const toggle = page.getByRole("button", {
+    name: "会話一覧を開く",
+    exact: true,
+  });
+  await expect(toggle).toBeFocused();
+  await toggle.click();
+  await expect(page.locator("#new-title")).toHaveValue("入力途中");
+  await page
+    .getByRole("button", { name: "会話一覧を閉じる", exact: true })
+    .focus();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(page.getByLabel("会話を探す")).toBeFocused();
+});
+
+test("mobile management, filters and restore work with the collapsible list", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await fixture(page);
+  await ready(page);
+  const toggle = page.getByRole("button", {
+    name: "会話一覧を開く",
+    exact: true,
+  });
+  await page.getByLabel("セッションの操作").click();
+  await page.getByRole("button", { name: "名前を変更", exact: true }).click();
+  await page.locator("#rename-title").fill("変更後");
+  await page.keyboard.press("Control+k");
+  await expect(page.locator("#session-sidebar")).not.toBeVisible();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "変更後" })).toBeVisible();
+  await page.getByLabel("セッションの操作").click();
+  await page.getByRole("button", { name: "アーカイブ", exact: true }).click();
+  await toggle.click();
+  await page.getByRole("button", { name: "保管", exact: true }).click();
+  await page.getByLabel("会話を探す").fill("変更");
+  await page.getByRole("button", { name: "変更後、返信済み" }).click();
+  await expect(page.locator("#session-sidebar")).not.toBeVisible();
+  await page.getByLabel("セッションの操作").click();
+  await page.getByRole("button", { name: "ゴミ箱へ移動", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "ゴミ箱へ移動", exact: true })
+    .click();
+  await toggle.click();
+  await page.getByRole("button", { name: "ゴミ箱", exact: true }).click();
+  await page.getByRole("button", { name: "変更後、返信済み" }).click();
+  await page.getByLabel("セッションの操作").click();
+  await page.getByRole("button", { name: "復元", exact: true }).click();
+  await expect(page.locator("#message")).toBeEnabled();
+  await expect(page.getByText("保存済みの回答です")).toBeVisible();
+  await expect(page.getByRole("status").first()).toHaveText("dot 接続済み");
+});
+
+test("sidebar fits narrow and tablet widths and scrolls independently in short viewports", async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  state.threads.push(
+    ...Array.from({ length: 25 }, (_, index) => ({
+      id: "extra" + index,
+      title: "追加会話" + index,
+      messages: [],
+    })),
+  );
+  await ready(page);
+  for (const width of [320, 390, 540, 600, 760, 761]) {
+    await page.setViewportSize({ width, height: 600 });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+    const toggle = page.getByRole("button", {
+      name: "会話一覧を開く",
+      exact: true,
+    });
+    if (width <= 760) {
+      await expect(page.locator("#session-sidebar")).not.toBeVisible();
+      await toggle.click();
+      const box = await page.locator("#session-sidebar").boundingBox();
+      expect(box!.width).toBeLessThanOrEqual(width - 48);
+      const sessions = page.locator("#sessions");
+      expect(
+        await sessions.evaluate(
+          (element) => element.scrollHeight > element.clientHeight,
+        ),
+      ).toBe(true);
+      await page
+        .getByRole("button", { name: "追加会話24、未開始" })
+        .scrollIntoViewIfNeeded();
+      await expect(
+        page.getByRole("button", { name: "追加会話24、未開始" }),
+      ).toBeVisible();
+      await page.keyboard.press("Escape");
+    } else {
+      await expect(toggle).not.toBeVisible();
+      await expect(page.locator("#session-sidebar")).toBeVisible();
+    }
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: "evidence/mobile-sidebar-closed.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "会話一覧を開く", exact: true })
+    .click();
+  await page.locator("#sessions").evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await page.screenshot({
+    path: "evidence/mobile-sidebar-open.png",
+    fullPage: true,
+  });
 });
