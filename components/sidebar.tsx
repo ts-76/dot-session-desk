@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { progressLabels } from "../lib/client/progress";
+import { progressLabels, progressSymbols } from "../lib/client/progress";
 import { visibleSessions, statusLabel } from "../lib/client/state";
 import type { Session, Filter } from "../lib/types";
 export function Sidebar({
@@ -112,7 +112,7 @@ export function Sidebar({
               key={s.id}
               type="button"
               aria-label={s.title + "、" + status.text}
-              aria-describedby={s.progress ? "progress-" + s.id : undefined}
+              aria-describedby={"progress-" + s.id}
               aria-pressed={s.id === selected}
               onClick={() => onSelect(s.id)}
               disabled={busy}
@@ -125,15 +125,26 @@ export function Sidebar({
                 <span className={"session-status " + status.state}>
                   {status.text}
                 </span>
-                {s.progress && (
-                  <span
-                    id={"progress-" + s.id}
-                    className="session-progress-label"
-                    data-status={s.progress.status}
-                  >
-                    進捗: {progressLabels[s.progress.status]}
-                  </span>
-                )}
+              </span>
+              <span
+                id={"progress-" + s.id}
+                className="progress-indicator"
+                data-status={s.progress?.status || "unregistered"}
+                role="img"
+                aria-label={
+                  "作業進捗: " +
+                  (s.progress ? progressLabels[s.progress.status] : "未登録") +
+                  "（返信状況とは別）"
+                }
+                title={
+                  "作業進捗: " +
+                  (s.progress ? progressLabels[s.progress.status] : "未登録") +
+                  "（返信状況とは別）"
+                }
+              >
+                <span aria-hidden="true">
+                  {progressSymbols[s.progress?.status || "unregistered"]}
+                </span>
               </span>
             </button>
           );

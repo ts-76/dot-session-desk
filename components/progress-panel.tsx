@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { SessionProgress } from "../lib/types";
-import { progressLabels } from "../lib/client/progress";
+import { progressLabels, progressSymbols } from "../lib/client/progress";
 
 export function ProgressPanel({
   progress,
@@ -16,7 +16,7 @@ export function ProgressPanel({
 }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    setOpen(!window.matchMedia("(max-width: 760px)").matches);
+    setOpen(false);
   }, [selected]);
   if (!selected) return null;
   const label = progress
@@ -41,13 +41,46 @@ export function ProgressPanel({
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary>
-        <strong>進捗</strong>
+      <summary
+        aria-label={
+          "作業進捗: " + label + "。詳細を" + (open ? "閉じる" : "開く")
+        }
+        title="dotが保存した作業進捗です。返信状況とは別の情報です。"
+      >
+        <span
+          className="progress-indicator"
+          data-status={progress?.status || "unregistered"}
+          aria-hidden="true"
+        >
+          <span>{progressSymbols[progress?.status || "unregistered"]}</span>
+        </span>
         <span className="progress-state" data-status={progress?.status}>
           {label}
         </span>
-        <span className="progress-detail-hint" aria-hidden="true">
-          詳細
+        <span className="progress-summary-meta">
+          {syncError && (
+            <span className="progress-sync-warning">同期未確認</span>
+          )}
+          {progress && (
+            <time
+              dateTime={progress.updatedAt}
+              title={
+                "最終更新 " +
+                new Date(progress.updatedAt).toLocaleString("ja-JP")
+              }
+              aria-label={
+                "最終更新 " +
+                new Date(progress.updatedAt).toLocaleString("ja-JP")
+              }
+            >
+              {new Date(progress.updatedAt).toLocaleString("ja-JP", {
+                month: "numeric",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </time>
+          )}
         </span>
       </summary>
       <div
@@ -55,9 +88,7 @@ export function ProgressPanel({
         role="region"
         aria-label="セッションの進捗"
       >
-        <p className="progress-note">
-          dotが登録した作業状況です。返信待ちとは別の情報です。
-        </p>
+        <p className="progress-note">dotが保存した作業進捗 · 返信状況とは別</p>
         {syncError && (
           <p className="progress-stale" role="status">
             更新を確認できません。前回取得した進捗を表示しています。
@@ -99,12 +130,6 @@ export function ProgressPanel({
                 </dd>
               </div>
             </dl>
-            <p className="progress-updated">
-              最終更新{" "}
-              <time dateTime={progress.updatedAt}>
-                {new Date(progress.updatedAt).toLocaleString("ja-JP")}
-              </time>
-            </p>
           </>
         ) : (
           <p>

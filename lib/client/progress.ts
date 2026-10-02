@@ -6,3 +6,16 @@ export const progressLabels: Record<SessionProgress["status"], string> = {
   complete: "完了",
   paused: "一時停止",
 };
+
+// A different symbol per state keeps meaning available without color.
+export const progressSymbols: Record<
+  SessionProgress["status"] | "unregistered",
+  string
+> = {
+  complete: "✓",
+  needs_input: "?",
+  blocked: "!",
+  in_progress: "↻",
+  paused: "Ⅱ",
+  unregistered: "–",
+};
