@@ -691,7 +691,7 @@ test("failed refresh keeps the previous progress with a stale warning", async ({
   ).toHaveAttribute("datetime", "2026-01-15T09:00:00.000Z");
 });
 
-test("compact progress uses distinct accessible symbols for every state with long titles", async ({
+test("compact progress uses centered circles and accessible labels for every state with long titles", async ({
   page,
 }) => {
   const s = await fixture(page);
@@ -711,7 +711,6 @@ test("compact progress uses distinct accessible symbols for every state with lon
     "一時停止",
     "未登録",
   ];
-  const symbols = ["✓", "?", "!", "↻", "Ⅱ", "–"];
   s.threads = states.map((status, i) => ({
     ...s.threads[1],
     id: i === 0 ? "a" : "state-" + i,
@@ -738,7 +737,20 @@ test("compact progress uses distinct accessible symbols for every state with lon
       "aria-label",
       "作業進捗: " + labels[i] + "（返信状況とは別）",
     );
-    await expect(icon).toHaveText(symbols[i]);
+    await expect(icon).toHaveText("");
+    await expect(icon.locator("svg")).toHaveAttribute("viewBox", "0 0 16 16");
+    await expect(
+      icon.locator(i === 3 || i === 5 ? "path" : "circle"),
+    ).toHaveCount(1);
+    const centered = await icon.evaluate((e) => {
+      const box = e.getBoundingClientRect(),
+        svg = e.querySelector("svg")!.getBoundingClientRect();
+      return (
+        Math.abs(box.left + box.width / 2 - (svg.left + svg.width / 2)) < 1 &&
+        Math.abs(box.top + box.height / 2 - (svg.top + svg.height / 2)) < 1
+      );
+    });
+    expect(centered).toBe(true);
     await expect(icon).toBeVisible();
   }
   expect(
@@ -753,6 +765,14 @@ test("compact progress uses distinct accessible symbols for every state with lon
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(1440);
+  await page.locator(".item").nth(1).focus();
+  expect(
+    await page
+      .locator(".item .progress-indicator")
+      .nth(1)
+      .evaluate((e) => getComputedStyle(e, "::after").content),
+  ).toContain("ユーザー判断待ち");
+  await page.locator(".session-progress > summary").focus();
   await page.screenshot({
     path: "evidence/compact-progress-states.png",
     fullPage: true,

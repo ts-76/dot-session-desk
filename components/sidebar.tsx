@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { progressLabels, progressSymbols } from "../lib/client/progress";
+import { ProgressIndicator } from "./progress-indicator";
 import { visibleSessions, statusLabel } from "../lib/client/state";
 import type { Session, Filter } from "../lib/types";
 export function Sidebar({
@@ -126,26 +126,10 @@ export function Sidebar({
                   {status.text}
                 </span>
               </span>
-              <span
+              <ProgressIndicator
                 id={"progress-" + s.id}
-                className="progress-indicator"
-                data-status={s.progress?.status || "unregistered"}
-                role="img"
-                aria-label={
-                  "作業進捗: " +
-                  (s.progress ? progressLabels[s.progress.status] : "未登録") +
-                  "（返信状況とは別）"
-                }
-                title={
-                  "作業進捗: " +
-                  (s.progress ? progressLabels[s.progress.status] : "未登録") +
-                  "（返信状況とは別）"
-                }
-              >
-                <span aria-hidden="true">
-                  {progressSymbols[s.progress?.status || "unregistered"]}
-                </span>
-              </span>
+                status={s.progress?.status}
+              />
             </button>
           );
         })}

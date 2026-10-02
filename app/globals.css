@@ -1051,12 +1051,8 @@ dialog p {
   flex: 0 0 16px;
   width: 16px;
   height: 16px;
-  border: 1px solid currentColor;
-  border-radius: 50%;
   color: var(--progress-color);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
+  position: relative;
 }
 .progress-indicator[data-status="complete"] {
   --progress-color: #79c998;
@@ -1069,10 +1065,31 @@ dialog p {
 }
 .progress-indicator[data-status="unregistered"] {
   --progress-color: var(--subtle);
-  border-style: dashed;
 }
 .item .progress-indicator {
   overflow: visible;
+}
+.progress-indicator svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  opacity: 1;
+}
+.item:hover .progress-indicator::after,
+.item:focus-visible .progress-indicator::after {
+  content: attr(data-label);
+  position: absolute;
+  right: 22px;
+  top: -6px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 400;
+  white-space: nowrap;
+  z-index: 1;
 }
 .progress-body {
   max-height: min(320px, 35dvh);

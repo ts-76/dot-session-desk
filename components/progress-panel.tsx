@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { SessionProgress } from "../lib/types";
-import { progressLabels, progressSymbols } from "../lib/client/progress";
+import { progressLabels } from "../lib/client/progress";
+import { ProgressIndicator } from "./progress-indicator";
 
 export function ProgressPanel({
   progress,
@@ -47,13 +48,7 @@ export function ProgressPanel({
         }
         title="dotが保存した作業進捗です。返信状況とは別の情報です。"
       >
-        <span
-          className="progress-indicator"
-          data-status={progress?.status || "unregistered"}
-          aria-hidden="true"
-        >
-          <span>{progressSymbols[progress?.status || "unregistered"]}</span>
-        </span>
+        <ProgressIndicator status={progress?.status} decorative />
         <span className="progress-state" data-status={progress?.status}>
           {label}
         </span>
