@@ -22,3 +22,6 @@ playwright-report/
 *.db-*
 coverage/
 .DS_Store
+
+# Browser screenshot evidence
+evidence/
