@@ -20,11 +20,9 @@ export function ProgressIndicator({
       id={id}
       className="progress-indicator"
       data-status={status || "unregistered"}
-      data-label={label}
       role={decorative ? undefined : "img"}
       aria-hidden={decorative || undefined}
       aria-label={decorative ? undefined : label}
-      title={decorative ? undefined : label}
     >
       <svg
         aria-hidden="true"

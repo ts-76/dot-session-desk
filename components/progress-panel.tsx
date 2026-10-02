@@ -46,7 +46,6 @@ export function ProgressPanel({
         aria-label={
           "作業進捗: " + label + "。詳細を" + (open ? "閉じる" : "開く")
         }
-        title="dotが保存した作業進捗です。返信状況とは別の情報です。"
       >
         <ProgressIndicator status={progress?.status} decorative />
         <span className="progress-state" data-status={progress?.status}>
@@ -59,10 +58,6 @@ export function ProgressPanel({
           {progress && (
             <time
               dateTime={progress.updatedAt}
-              title={
-                "最終更新 " +
-                new Date(progress.updatedAt).toLocaleString("ja-JP")
-              }
               aria-label={
                 "最終更新 " +
                 new Date(progress.updatedAt).toLocaleString("ja-JP")

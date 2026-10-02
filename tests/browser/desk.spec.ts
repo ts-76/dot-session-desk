@@ -729,10 +729,7 @@ test("compact progress uses centered circles and accessible labels for every sta
   for (let i = 0; i < states.length; i++) {
     const icon = page.locator(".item .progress-indicator").nth(i);
     await expect(icon).toHaveAttribute("data-status", states[i]);
-    await expect(icon).toHaveAttribute(
-      "title",
-      "作業進捗: " + labels[i] + "（返信状況とは別）",
-    );
+    await expect(icon).not.toHaveAttribute("title", /.+/);
     await expect(icon).toHaveAttribute(
       "aria-label",
       "作業進捗: " + labels[i] + "（返信状況とは別）",
@@ -771,7 +768,15 @@ test("compact progress uses centered circles and accessible labels for every sta
       .locator(".item .progress-indicator")
       .nth(1)
       .evaluate((e) => getComputedStyle(e, "::after").content),
-  ).toContain("ユーザー判断待ち");
+  ).toBe("none");
+  await page.locator(".item").nth(1).hover();
+  expect(
+    await page
+      .locator(".item .progress-indicator")
+      .nth(1)
+      .evaluate((e) => getComputedStyle(e, "::after").content),
+  ).toBe("none");
+  await expect(page.locator(".session-progress [title]")).toHaveCount(0);
   await page.locator(".session-progress > summary").focus();
   await page.screenshot({
     path: "evidence/compact-progress-states.png",

@@ -1052,7 +1052,6 @@ dialog p {
   width: 16px;
   height: 16px;
   color: var(--progress-color);
-  position: relative;
 }
 .progress-indicator[data-status="complete"] {
   --progress-color: #79c998;
@@ -1074,22 +1073,6 @@ dialog p {
   width: 16px;
   height: 16px;
   opacity: 1;
-}
-.item:hover .progress-indicator::after,
-.item:focus-visible .progress-indicator::after {
-  content: attr(data-label);
-  position: absolute;
-  right: 22px;
-  top: -6px;
-  padding: 4px 6px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--panel);
-  color: var(--text);
-  font-size: 10px;
-  font-weight: 400;
-  white-space: nowrap;
-  z-index: 1;
 }
 .progress-body {
   max-height: min(320px, 35dvh);
