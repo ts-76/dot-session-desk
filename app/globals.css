@@ -995,3 +995,113 @@ dialog p {
     height: calc(100dvh - 74px);
   }
 }
+
+.session-progress {
+  flex-shrink: 0;
+  margin: 12px 28px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.session-progress > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.session-progress > summary::-webkit-details-marker {
+  display: none;
+}
+.session-progress > summary::after {
+  content: "＋";
+  color: var(--muted);
+}
+.session-progress[open] > summary::after {
+  content: "−";
+}
+.progress-state {
+  color: var(--muted);
+  font-size: 11px;
+}
+.progress-state[data-status="needs_input"] {
+  color: var(--text);
+  font-weight: 600;
+}
+.progress-detail-hint {
+  margin-left: auto;
+  color: var(--subtle);
+  font-size: 10px;
+}
+.progress-body {
+  max-height: min(320px, 35dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0 12px 12px;
+  overflow-wrap: anywhere;
+}
+.progress-note,
+.progress-stale,
+.progress-updated {
+  font-size: 11px;
+  color: var(--muted);
+}
+.progress-stale {
+  border-left: 2px solid var(--muted);
+  padding-left: 8px;
+}
+.progress-body dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+  margin: 12px 0;
+}
+.progress-body dt {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.progress-body dd {
+  margin: 4px 0 0;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.progress-body ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.progress-body li + li {
+  margin-top: 4px;
+}
+.progress-empty {
+  color: var(--subtle);
+}
+.progress-attention {
+  border-left: 2px solid var(--text);
+  padding-left: 8px;
+}
+.progress-updated {
+  margin-bottom: 0;
+}
+.item .session-progress-label {
+  font-size: 10px;
+  color: var(--subtle);
+}
+.item .session-progress-label[data-status="needs_input"] {
+  color: var(--text);
+}
+@media (max-width: 760px) {
+  .session-progress {
+    margin: 8px 12px 0;
+  }
+  .session-progress > summary {
+    min-height: 44px;
+  }
+  .progress-body dl {
+    grid-template-columns: 1fr;
+  }
+  .progress-body {
+    max-height: 35dvh;
+  }
+}

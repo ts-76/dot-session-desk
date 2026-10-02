@@ -1,3 +1,4 @@
+import { updateProgress, attachProgress } from "./progress.ts";
 import type { Row, Env, Context } from "./data.ts";
 import {
   EVENT,
@@ -23,6 +24,55 @@ const schema = (properties: Row, required: string[] = []) => ({
 });
 const str = { type: "string" };
 const tools = [
+  {
+    name: "update_progress",
+    description:
+      "Replace one owned session's structured progress with verified user-facing facts. Read read_thread.progress.version first (0 when unregistered). Retry an identical request with the same update_key; on version conflict re-read and use a new key. Never infer completion or copy internal instructions. Creates no reply and emits no message.created event.",
+    inputSchema: schema(
+      {
+        thread_id: str,
+        expected_version: { type: "integer", minimum: 0 },
+        update_key: { type: "string", minLength: 1, maxLength: 200 },
+        status: {
+          type: "string",
+          enum: ["in_progress", "blocked", "needs_input", "complete", "paused"],
+        },
+        completed: {
+          type: "array",
+          maxItems: 20,
+          items: { type: "string", minLength: 1, maxLength: 500 },
+        },
+        current: { type: "string", maxLength: 1000 },
+        blockers: {
+          type: "array",
+          maxItems: 10,
+          items: { type: "string", minLength: 1, maxLength: 500 },
+        },
+        user_actions: {
+          type: "array",
+          maxItems: 10,
+          items: { type: "string", minLength: 1, maxLength: 500 },
+        },
+        next_step: { type: "string", maxLength: 1000 },
+      },
+      [
+        "thread_id",
+        "expected_version",
+        "update_key",
+        "status",
+        "completed",
+        "current",
+        "blockers",
+        "user_actions",
+        "next_step",
+      ],
+    ),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+    },
+  },
   {
     name: "append_update",
     description:
@@ -79,6 +129,7 @@ export async function callTool(
   name: string,
   a: Row,
 ) {
+  if (name === "update_progress") return updateProgress(db, owner, a);
   if (name === "append_update") {
     const threadId = text(a.thread_id, 100),
       sourceId = text(a.reply_to, 100),
@@ -122,10 +173,14 @@ export async function callTool(
     return { id, duplicate: false };
   }
   if (name === "list_sessions")
-    return all(
+    return attachProgress(
       db,
-      "SELECT * FROM threads WHERE owner=? AND deletedAt IS NULL ORDER BY pinned DESC,created DESC",
       owner,
+      await all(
+        db,
+        "SELECT * FROM threads WHERE owner=? AND deletedAt IS NULL ORDER BY pinned DESC,created DESC",
+        owner,
+      ),
     );
   if (name === "read_thread")
     return readThread(db, owner, text(a.thread_id, 100));
@@ -199,14 +254,14 @@ export async function mcp(request: Request, env: Env, owner: string | null) {
       return reply({
         resultType: "complete",
         supportedVersions: ["2026-07-28"],
-        serverInfo: { name: "dot-session-desk", version: "0.2.0" },
+        serverInfo: { name: "dot-session-desk", version: "0.3.0" },
         capabilities: { tools: {}, events: {} },
       });
     if (q.method === "initialize")
       return reply({
         protocolVersion: "2025-03-26",
         capabilities: { tools: {} },
-        serverInfo: { name: "dot-session-desk", version: "0.2.0" },
+        serverInfo: { name: "dot-session-desk", version: "0.3.0" },
       });
     if (q.method === "notifications/initialized")
       return new Response(null, { status: 202 });
@@ -267,7 +322,20 @@ export async function mcp(request: Request, env: Env, owner: string | null) {
       {
         jsonrpc: "2.0",
         id: q.id ?? null,
-        error: { code: e.rpcCode || -32602, message: e.message },
+        error: {
+          code: e.rpcCode || -32602,
+          message: e.message,
+          ...(e.status
+            ? {
+                data: {
+                  status: e.status,
+                  ...(e.currentVersion !== undefined
+                    ? { current_version: e.currentVersion }
+                    : {}),
+                },
+              }
+            : {}),
+        },
       },
       e.status === 401 ? 401 : 200,
     );

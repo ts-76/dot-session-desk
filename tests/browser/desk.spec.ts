@@ -32,6 +32,7 @@ async function fixture(page: Page) {
     slow: false,
     failSend: false,
     failCreate: false,
+    failRead: false,
   };
   await page.route("**/api/**", async (route) => {
     const req = route.request(),
@@ -85,6 +86,8 @@ async function fixture(page: Page) {
         });
       return route.fulfill({ json: { saved: true, id: b.id } });
     }
+    if (state.failRead)
+      return route.fulfill({ status: 503, json: { error: "temporary" } });
     if (state.slow && id === "a") await new Promise((r) => setTimeout(r, 2500));
     return route.fulfill({ json: t });
   });
@@ -523,4 +526,157 @@ test("sidebar fits narrow and tablet widths and scrolls independently in short v
     path: "evidence/mobile-sidebar-open.png",
     fullPage: true,
   });
+});
+
+// Fictional structured facts; these API mocks never connect to a real session.
+function progressFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    status: "needs_input",
+    completed: ["サンプル仕様を整理"],
+    current: "画面の試作を確認",
+    blockers: ["表示方式が未決定"],
+    userActions: ["案Aと案Bから選んでください"],
+    nextStep: "選択後にサンプル画面を調整",
+    version: 1,
+    updatedAt: "2026-01-15T09:00:00.000Z",
+    ...overrides,
+  };
+}
+test("progress is explicitly unregistered rather than inferred from a reply", async ({
+  page,
+}) => {
+  await fixture(page);
+  await ready(page);
+  await expect(page.locator(".session-progress")).toHaveAttribute("open", "");
+  await expect(page.locator(".progress-state")).toHaveText("未登録");
+  await expect(
+    page.getByRole("region", { name: "セッションの進捗" }),
+  ).toContainText("推測して表示しません");
+  await expect(page.locator(".session-progress-label")).toHaveCount(0);
+});
+test("registered facts show separate fields and needs-input sidebar description", async ({
+  page,
+}) => {
+  const s = await fixture(page);
+  s.threads[0].progress = progressFixture();
+  await ready(page);
+  const region = page.getByRole("region", { name: "セッションの進捗" });
+  for (const value of [
+    "完了したこと",
+    "サンプル仕様を整理",
+    "現在の作業",
+    "画面の試作を確認",
+    "ブロッカー",
+    "表示方式が未決定",
+    "あなたの対応・判断",
+    "案Aと案Bから選んでください",
+    "次の一手",
+    "選択後にサンプル画面を調整",
+    "最終更新",
+  ])
+    await expect(region).toContainText(value);
+  await expect(region.locator("time")).toHaveAttribute(
+    "datetime",
+    "2026-01-15T09:00:00.000Z",
+  );
+  await expect(
+    page.getByRole("button", { name: "設計相談、返信済み" }),
+  ).toHaveAccessibleDescription("進捗: ユーザー判断待ち");
+  await page.screenshot({
+    path: "evidence/progress-desktop.png",
+    fullPage: true,
+  });
+});
+test("progress polling updates facts without changing pending reply or draft", async ({
+  page,
+}) => {
+  const s = await fixture(page);
+  s.threads[0].progress = progressFixture();
+  s.threads[0].messages.push({
+    id: "pending",
+    role: "user",
+    body: "未返信のサンプル質問",
+    created: date,
+  });
+  await ready(page);
+  await page.locator("#message").fill("保持する下書き");
+  s.threads[0].progress = progressFixture({
+    status: "complete",
+    completed: ["サンプル確認を完了"],
+    current: "",
+    blockers: [],
+    userActions: [],
+    nextStep: "",
+    version: 2,
+  });
+  await expect(page.locator(".progress-state")).toHaveText("完了", {
+    timeout: 6000,
+  });
+  await expect(page.getByText("dotの返信を待っています")).toBeVisible();
+  await expect(page.locator("#message")).toHaveValue("保持する下書き");
+  await page.getByRole("button", { name: "開発メモ、未開始" }).click();
+  await expect(page.locator(".progress-state")).toHaveText("未登録");
+  await expect(page.getByText("サンプル確認を完了")).toHaveCount(0);
+});
+test("mobile progress starts collapsed, expands without overflow, and preserves drafts", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const s = await fixture(page);
+  s.threads[0].progress = progressFixture({
+    current: "長い確認内容".repeat(100),
+    blockers: Array(10).fill("長いブロッカー内容".repeat(40)),
+  });
+  await ready(page);
+  const details = page.locator(".session-progress");
+  await expect(details).not.toHaveAttribute("open", "");
+  await page.locator("#message").fill("モバイルの下書き");
+  await details.locator("summary").click();
+  await expect(
+    page.getByRole("region", { name: "セッションの進捗" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  expect(
+    await page
+      .locator(".progress-body")
+      .evaluate((e) => e.scrollHeight > e.clientHeight),
+  ).toBe(true);
+  await expect(page.locator("#message")).toHaveValue("モバイルの下書き");
+  await page.screenshot({
+    path: "evidence/progress-mobile-expanded.png",
+    fullPage: true,
+  });
+  await details.locator("summary").click();
+  await page.getByRole("button", { name: "会話一覧を開く" }).click();
+  await expect(page.locator(".session-progress-label")).toContainText(
+    "ユーザー判断待ち",
+  );
+  await page.getByRole("button", { name: "開発メモ、未開始" }).click();
+  await expect(details).not.toHaveAttribute("open", "");
+  await page.getByRole("button", { name: "会話一覧を開く" }).click();
+  await page.getByRole("button", { name: "設計相談、返信済み" }).click();
+  await expect(page.locator("#message")).toHaveValue("モバイルの下書き");
+  await expect(details).not.toHaveAttribute("open", "");
+  await page.screenshot({
+    path: "evidence/progress-mobile-collapsed.png",
+    fullPage: true,
+  });
+});
+test("failed refresh keeps the previous progress with a stale warning", async ({
+  page,
+}) => {
+  const s = await fixture(page);
+  s.threads[0].progress = progressFixture();
+  await ready(page);
+  s.failRead = true;
+  await expect(page.locator(".progress-stale")).toBeVisible({ timeout: 6000 });
+  await expect(
+    page.getByText("案Aと案Bから選んでください", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".progress-updated time")).toHaveAttribute(
+    "datetime",
+    "2026-01-15T09:00:00.000Z",
+  );
 });

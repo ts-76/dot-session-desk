@@ -22,6 +22,13 @@
       "when": 1790908337034,
       "tag": "0002_high_bruce_banner",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790928028585,
+      "tag": "0003_session_progress",
+      "breakpoints": true
     }
   ]
 }
