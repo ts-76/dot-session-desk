@@ -1,3 +1,13 @@
+export interface SessionProgress {
+  status: "in_progress" | "blocked" | "needs_input" | "complete" | "paused";
+  completed: string[];
+  current: string;
+  blockers: string[];
+  userActions: string[];
+  nextStep: string;
+  version: number;
+  updatedAt: string;
+}
 export interface Message {
   id: string;
   role: "user" | "dot";
@@ -15,6 +25,7 @@ export interface Session {
   pendingCount?: number;
   lastReplyId?: string | null;
   messageCount?: number;
+  progress?: SessionProgress | null;
 }
 export interface Conversation extends Session {
   messages: Message[];

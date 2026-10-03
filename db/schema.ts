@@ -60,3 +60,22 @@ export const deliveries = sqliteTable(
   },
   (t) => [index("deliveries_subscription").on(t.subscription)],
 );
+
+export const progressUpdates = sqliteTable(
+  "progress_updates",
+  {
+    thread: text()
+      .notNull()
+      .references(() => threads.id),
+    owner: text().notNull(),
+    version: integer().notNull(),
+    updateKey: text().notNull(),
+    expectedVersion: integer().notNull(),
+    payload: text().notNull(),
+    updated: text().notNull(),
+  },
+  (t) => [
+    uniqueIndex("progress_thread_version").on(t.owner, t.thread, t.version),
+    uniqueIndex("progress_update_key").on(t.owner, t.thread, t.updateKey),
+  ],
+);

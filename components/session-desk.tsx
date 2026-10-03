@@ -5,6 +5,7 @@ import { Sidebar } from "./sidebar";
 import { Conversation } from "./conversation";
 import { SessionMenu } from "./session-menu";
 import { Composer } from "./composer";
+import { ProgressPanel } from "./progress-panel";
 export default function SessionDesk() {
   const d = useSessionDesk();
   const [isMobile, setIsMobile] = useState(false);
@@ -220,6 +221,12 @@ export default function SessionDesk() {
               onManage={d.manage}
             />
           </div>
+          <ProgressPanel
+            progress={d.current?.id === d.selected ? d.current.progress : null}
+            selected={d.selected}
+            loading={d.loading}
+            syncError={d.syncError}
+          />
           <Conversation
             conversation={d.conversation}
             selected={d.selected}

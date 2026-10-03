@@ -6,7 +6,9 @@ import worker from "./lib/server/http.ts";
 import { validateCallback } from "./lib/server/notifications.ts";
 function db() {
   const db = new DatabaseSync(":memory:");
-  for (const f of readdirSync("drizzle").filter((x) => x.endsWith(".sql")))
+  for (const f of readdirSync("drizzle")
+    .filter((x) => x.endsWith(".sql"))
+    .sort())
     db.exec(readFileSync("drizzle/" + f, "utf8"));
   return {
     prepare(sql) {
@@ -16,7 +18,7 @@ function db() {
           return {
             first: async () => s.get(...v) || null,
             all: async () => ({ results: s.all(...v) }),
-            run: async () => s.run(...v),
+            run: async () => ({ meta: { changes: s.run(...v).changes } }),
           };
         },
       };
@@ -479,5 +481,293 @@ test("bridge requires a separate opt-in even in Sites mode", async () => {
     (await worker.fetch(req("/bridge", { action: "list_pending" }), env, ctx))
       .status,
     403,
+  );
+});
+
+// Fictional progress facts, never a record of a real user's work.
+const progressArgs = (id, overrides = {}) => ({
+  thread_id: id,
+  expected_version: 0,
+  update_key: "fixture-start",
+  status: "in_progress",
+  completed: ["サンプル画面を確認"],
+  current: "テスト用の表示を調整",
+  blockers: [],
+  user_actions: [],
+  next_step: "サンプル試験を確認",
+  ...overrides,
+});
+async function newThread(env, owner = "a") {
+  return (
+    await worker.fetch(
+      req("/api/threads", { title: "Progress fixture" }, owner),
+      env,
+      ctx,
+    )
+  ).json();
+}
+async function progressRpc(env, name, args, owner = "a", context = ctx) {
+  const response = await worker.fetch(
+    req(
+      "/mcp",
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name, arguments: args },
+      },
+      owner,
+    ),
+    env,
+    context,
+  );
+  const body = await response.json();
+  return body.error
+    ? { error: body.error }
+    : JSON.parse(body.result.content[0].text);
+}
+
+test("progress migration adds tables without changing existing conversation data", () => {
+  const memory = new DatabaseSync(":memory:");
+  for (const file of readdirSync("drizzle")
+    .filter((file) => /^000[0-2].*\.sql$/.test(file))
+    .sort())
+    memory.exec(readFileSync("drizzle/" + file, "utf8"));
+  memory.exec(
+    "INSERT INTO threads(id,owner,title,created) VALUES('old','a','Keep','fixture-date'); INSERT INTO messages(id,thread,owner,role,body,created) VALUES('old-message','old','a','user','Keep body','fixture-date')",
+  );
+  memory.exec(readFileSync("drizzle/0003_session_progress.sql", "utf8"));
+  assert.equal(
+    memory.prepare("SELECT body FROM messages WHERE id='old-message'").get()
+      .body,
+    "Keep body",
+  );
+  assert.equal(
+    memory.prepare("SELECT count(*) AS n FROM progress_updates").get().n,
+    0,
+  );
+  memory.close();
+});
+
+test("unregistered progress is null in browser and MCP reads; tool is discoverable", async () => {
+  const env = testEnv(),
+    t = await newThread(env);
+  const read = await progressRpc(env, "read_thread", { thread_id: t.id });
+  assert.equal(read.progress, null);
+  const sessions = await progressRpc(env, "list_sessions", {});
+  assert.equal(sessions[0].progress, null);
+  const discovery = await (
+    await worker.fetch(
+      req("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" }, null),
+      env,
+      ctx,
+    )
+  ).json();
+  const tool = discovery.result.tools.find(
+    (tool) => tool.name === "update_progress",
+  );
+  assert.equal(tool.annotations.idempotentHint, true);
+  assert.equal(tool.inputSchema.additionalProperties, false);
+});
+
+test("structured progress persists with version and server time and emits no reply or event", async () => {
+  const env = testEnv(),
+    t = await newThread(env);
+  let scheduled = 0;
+  const result = await progressRpc(
+    env,
+    "update_progress",
+    progressArgs(t.id),
+    "a",
+    {
+      waitUntil() {
+        scheduled++;
+      },
+    },
+  );
+  assert.equal(scheduled, 0);
+  assert.equal(result.duplicate, false);
+  assert.equal(result.progress.version, 1);
+  assert.ok(Number.isFinite(Date.parse(result.progress.updatedAt)));
+  assert.deepEqual(result.progress.completed, ["サンプル画面を確認"]);
+  const read = await (
+    await worker.fetch(req("/api/threads/" + t.id), env, ctx)
+  ).json();
+  assert.deepEqual(read.progress, result.progress);
+  assert.equal(read.messages.length, 0);
+  assert.equal(
+    (
+      await env.DB.prepare("SELECT count(*) AS n FROM deliveries")
+        .bind()
+        .first()
+    ).n,
+    0,
+  );
+  assert.equal(
+    (await progressRpc(env, "list_sessions", {}))[0].progress.version,
+    1,
+  );
+  assert.equal(
+    (await (await worker.fetch(req("/api/threads"), env, ctx)).json())[0]
+      .progress.version,
+    1,
+  );
+});
+
+test("progress retries preserve time, old retries cannot overwrite newer status, reused keys conflict", async () => {
+  const env = testEnv(),
+    t = await newThread(env),
+    args = progressArgs(t.id);
+  const first = await progressRpc(env, "update_progress", args);
+  const retry = await progressRpc(env, "update_progress", args);
+  assert.equal(retry.duplicate, true);
+  assert.deepEqual(retry.progress, first.progress);
+  const newer = await progressRpc(
+    env,
+    "update_progress",
+    progressArgs(t.id, {
+      expected_version: 1,
+      update_key: "fixture-input",
+      status: "needs_input",
+      current: "",
+      user_actions: ["テスト用の表示案を選んでください"],
+    }),
+  );
+  assert.equal(newer.progress.version, 2);
+  assert.equal(
+    (await progressRpc(env, "update_progress", args)).duplicate,
+    true,
+  );
+  assert.equal(
+    (await progressRpc(env, "read_thread", { thread_id: t.id })).progress
+      .status,
+    "needs_input",
+  );
+  assert.equal(
+    (
+      await progressRpc(env, "update_progress", {
+        ...args,
+        current: "Different",
+      })
+    ).error.data.status,
+    409,
+  );
+  assert.equal(
+    (
+      await progressRpc(env, "update_progress", {
+        ...args,
+        expected_version: 2,
+      })
+    ).error.data.status,
+    409,
+  );
+});
+
+test("simultaneous progress writers use atomic CAS and simultaneous retries are idempotent", async () => {
+  const env = testEnv(),
+    t = await newThread(env);
+  const results = await Promise.all(
+    ["fixture-one", "fixture-two"].map((key) =>
+      progressRpc(
+        env,
+        "update_progress",
+        progressArgs(t.id, { update_key: key }),
+      ),
+    ),
+  );
+  assert.equal(results.filter((result) => result.error).length, 1);
+  const conflict = results.find((result) => result.error).error;
+  assert.equal(conflict.code, -32009);
+  assert.equal(conflict.data.status, 409);
+  assert.equal(conflict.data.current_version, 1);
+  const same = progressArgs(t.id, {
+    expected_version: 1,
+    update_key: "fixture-same",
+  });
+  const retries = await Promise.all([
+    progressRpc(env, "update_progress", same),
+    progressRpc(env, "update_progress", same),
+  ]);
+  assert.deepEqual(retries.map((result) => result.duplicate).sort(), [
+    false,
+    true,
+  ]);
+  assert.equal(
+    (await progressRpc(env, "read_thread", { thread_id: t.id })).progress
+      .version,
+    2,
+  );
+});
+
+test("progress validation and owner scope reject unauthorized or malformed updates", async () => {
+  const env = testEnv(),
+    t = await newThread(env),
+    args = progressArgs(t.id);
+  assert.equal(
+    (await progressRpc(env, "update_progress", args, "other")).error.data
+      .status,
+    404,
+  );
+  assert.equal(
+    (await progressRpc(env, "update_progress", args, null)).error.data.status,
+    401,
+  );
+  for (const overrides of [
+    { expected_version: -1 },
+    { expected_version: "0" },
+    { expected_version: 0.5 },
+    { status: "unknown" },
+    { completed: "wrong" },
+    { completed: [""] },
+    { current: "x".repeat(1001) },
+    { blockers: Array(11).fill("x") },
+    { status: "blocked", blockers: [] },
+    { status: "needs_input", user_actions: [] },
+    { status: "complete", current: "still working" },
+    { user_actions: ["Choose"] },
+    { owner: "other" },
+    { updatedAt: "invented" },
+  ])
+    assert.equal(
+      (await progressRpc(env, "update_progress", { ...args, ...overrides }))
+        .error.data.status,
+      400,
+    );
+  assert.equal(
+    (await progressRpc(env, "read_thread", { thread_id: t.id })).progress,
+    null,
+  );
+});
+
+test("progress is isolated between owners and retains independent unanswered message state", async () => {
+  const env = testEnv(),
+    t = await newThread(env),
+    other = await newThread(env, "other");
+  await worker.fetch(
+    req("/api/threads/" + t.id, {
+      id: "progress-question",
+      text: "Fixture question",
+    }),
+    env,
+    ctx,
+  );
+  const args = progressArgs(t.id, {
+    status: "complete",
+    current: "",
+    next_step: "",
+  });
+  await progressRpc(env, "update_progress", args);
+  assert.equal((await progressRpc(env, "list_pending", {})).length, 1);
+  const list = await (await worker.fetch(req("/api/threads"), env, ctx)).json();
+  assert.equal(list[0].pendingCount, 1);
+  assert.equal(list[0].progress.status, "complete");
+  const otherList = await progressRpc(env, "list_sessions", {}, "other");
+  assert.equal(otherList.length, 1);
+  assert.equal(otherList[0].id, other.id);
+  assert.equal(otherList[0].progress, null);
+  assert.equal(
+    (await progressRpc(env, "read_thread", { thread_id: t.id }, "other")).error
+      .data.status,
+    404,
   );
 });

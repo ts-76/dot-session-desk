@@ -1,3 +1,4 @@
+import { readProgress, attachProgress } from "./progress.ts";
 export type Row = Record<string, any>;
 export interface Env {
   DB: D1Database;
@@ -77,6 +78,7 @@ export async function readThread(db: D1Database, owner: string, id: string) {
   const t = await thread(db, owner, id);
   return {
     ...t,
+    progress: await readProgress(db, owner, id),
     messages: await all(
       db,
       "SELECT id,role,body,COALESCE(replyTo,followupTo) AS replyTo,created FROM messages WHERE thread=? AND owner=? ORDER BY created,rowid",
@@ -122,10 +124,14 @@ export async function listThreadSummaries(db: D1Database, owner: string) {
     if (!groups.has(row.thread)) groups.set(row.thread, []);
     groups.get(row.thread)!.push(row);
   }
-  return threads.map((t) => ({
-    ...t,
-    ...summarizeMessages(groups.get(t.id) || []),
-  }));
+  return attachProgress(
+    db,
+    owner,
+    threads.map((t) => ({
+      ...t,
+      ...summarizeMessages(groups.get(t.id) || []),
+    })),
+  );
 }
 export async function appendUser(
   db: D1Database,
