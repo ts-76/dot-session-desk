@@ -998,16 +998,15 @@ dialog p {
 
 .session-progress {
   flex-shrink: 0;
-  margin: 12px 28px 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
+  margin: 0 28px;
+  border-bottom: 1px solid var(--line);
 }
 .session-progress > summary {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 0;
   cursor: pointer;
   list-style: none;
 }
@@ -1017,6 +1016,7 @@ dialog p {
 .session-progress > summary::after {
   content: "＋";
   color: var(--muted);
+  font-size: 12px;
 }
 .session-progress[open] > summary::after {
   content: "−";
@@ -1024,28 +1024,70 @@ dialog p {
 .progress-state {
   color: var(--muted);
   font-size: 11px;
+  white-space: nowrap;
 }
 .progress-state[data-status="needs_input"] {
   color: var(--text);
   font-weight: 600;
 }
-.progress-detail-hint {
+.progress-summary-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
+  min-width: 0;
   color: var(--subtle);
   font-size: 10px;
+  white-space: nowrap;
+}
+.progress-sync-warning {
+  color: var(--muted);
+}
+.progress-indicator {
+  --progress-color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--progress-color);
+}
+.progress-indicator[data-status="complete"] {
+  --progress-color: #79c998;
+}
+.progress-indicator[data-status="needs_input"] {
+  --progress-color: #e4c46b;
+}
+.progress-indicator[data-status="blocked"] {
+  --progress-color: #ec9696;
+}
+.progress-indicator[data-status="unregistered"] {
+  --progress-color: var(--subtle);
+}
+.item .progress-indicator {
+  overflow: visible;
+}
+.progress-indicator svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  opacity: 1;
 }
 .progress-body {
   max-height: min(320px, 35dvh);
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 0 12px 12px;
+  padding: 0 0 10px;
   overflow-wrap: anywhere;
 }
 .progress-note,
-.progress-stale,
-.progress-updated {
+.progress-stale {
   font-size: 11px;
   color: var(--muted);
+}
+.progress-note {
+  margin: 4px 0 10px;
 }
 .progress-stale {
   border-left: 2px solid var(--muted);
@@ -1054,8 +1096,8 @@ dialog p {
 .progress-body dl {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px 20px;
-  margin: 12px 0;
+  gap: 10px 20px;
+  margin: 8px 0;
 }
 .progress-body dt {
   font-size: 11px;
@@ -1081,27 +1123,37 @@ dialog p {
   border-left: 2px solid var(--text);
   padding-left: 8px;
 }
-.progress-updated {
-  margin-bottom: 0;
+/* Reply state remains text; progress has one dedicated symbol, avoiding two lamps. */
+.session-status.waiting::before,
+.session-status.unread::before {
+  content: none;
 }
-.item .session-progress-label {
-  font-size: 10px;
-  color: var(--subtle);
-}
-.item .session-progress-label[data-status="needs_input"] {
-  color: var(--text);
+@media (prefers-color-scheme: light) {
+  .progress-indicator[data-status="complete"] {
+    --progress-color: #267447;
+  }
+  .progress-indicator[data-status="needs_input"] {
+    --progress-color: #866200;
+  }
+  .progress-indicator[data-status="blocked"] {
+    --progress-color: #b54040;
+  }
 }
 @media (max-width: 760px) {
   .session-progress {
-    margin: 8px 12px 0;
+    margin: 0 16px;
   }
   .session-progress > summary {
-    min-height: 44px;
+    min-height: 40px;
   }
   .progress-body dl {
     grid-template-columns: 1fr;
   }
   .progress-body {
     max-height: 35dvh;
+  }
+  .progress-summary-meta {
+    gap: 6px;
+    font-size: 10px;
   }
 }

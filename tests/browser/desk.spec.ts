@@ -547,12 +547,18 @@ test("progress is explicitly unregistered rather than inferred from a reply", as
 }) => {
   await fixture(page);
   await ready(page);
-  await expect(page.locator(".session-progress")).toHaveAttribute("open", "");
+  await expect(page.locator(".session-progress")).not.toHaveAttribute(
+    "open",
+    "",
+  );
+  await page.locator(".session-progress > summary").click();
   await expect(page.locator(".progress-state")).toHaveText("未登録");
   await expect(
     page.getByRole("region", { name: "セッションの進捗" }),
   ).toContainText("推測して表示しません");
-  await expect(page.locator(".session-progress-label")).toHaveCount(0);
+  await expect(
+    page.locator(".item .progress-indicator[data-status=unregistered]"),
+  ).toHaveCount(2);
 });
 test("registered facts show separate fields and needs-input sidebar description", async ({
   page,
@@ -560,6 +566,7 @@ test("registered facts show separate fields and needs-input sidebar description"
   const s = await fixture(page);
   s.threads[0].progress = progressFixture();
   await ready(page);
+  await page.locator(".session-progress > summary").click();
   const region = page.getByRole("region", { name: "セッションの進捗" });
   for (const value of [
     "完了したこと",
@@ -572,16 +579,14 @@ test("registered facts show separate fields and needs-input sidebar description"
     "案Aと案Bから選んでください",
     "次の一手",
     "選択後にサンプル画面を調整",
-    "最終更新",
   ])
     await expect(region).toContainText(value);
-  await expect(region.locator("time")).toHaveAttribute(
-    "datetime",
-    "2026-01-15T09:00:00.000Z",
-  );
+  await expect(
+    page.locator(".session-progress > summary time"),
+  ).toHaveAttribute("datetime", "2026-01-15T09:00:00.000Z");
   await expect(
     page.getByRole("button", { name: "設計相談、返信済み" }),
-  ).toHaveAccessibleDescription("進捗: ユーザー判断待ち");
+  ).toHaveAccessibleDescription("作業進捗: ユーザー判断待ち（返信状況とは別）");
   await page.screenshot({
     path: "evidence/progress-desktop.png",
     fullPage: true,
@@ -650,9 +655,11 @@ test("mobile progress starts collapsed, expands without overflow, and preserves 
   });
   await details.locator("summary").click();
   await page.getByRole("button", { name: "会話一覧を開く" }).click();
-  await expect(page.locator(".session-progress-label")).toContainText(
-    "ユーザー判断待ち",
-  );
+  await expect(
+    page.getByRole("img", {
+      name: "作業進捗: ユーザー判断待ち（返信状況とは別）",
+    }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "開発メモ、未開始" }).click();
   await expect(details).not.toHaveAttribute("open", "");
   await page.getByRole("button", { name: "会話一覧を開く" }).click();
@@ -671,12 +678,165 @@ test("failed refresh keeps the previous progress with a stale warning", async ({
   s.threads[0].progress = progressFixture();
   await ready(page);
   s.failRead = true;
+  await expect(page.locator(".progress-sync-warning")).toBeVisible({
+    timeout: 6000,
+  });
+  await page.locator(".session-progress > summary").click();
   await expect(page.locator(".progress-stale")).toBeVisible({ timeout: 6000 });
   await expect(
     page.getByText("案Aと案Bから選んでください", { exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".progress-updated time")).toHaveAttribute(
-    "datetime",
-    "2026-01-15T09:00:00.000Z",
+  await expect(
+    page.locator(".session-progress > summary time"),
+  ).toHaveAttribute("datetime", "2026-01-15T09:00:00.000Z");
+});
+
+test("compact progress uses centered circles and accessible labels for every state with long titles", async ({
+  page,
+}) => {
+  const s = await fixture(page);
+  const states = [
+    "complete",
+    "needs_input",
+    "blocked",
+    "in_progress",
+    "paused",
+    "unregistered",
+  ];
+  const labels = [
+    "完了",
+    "ユーザー判断待ち",
+    "ブロッカーあり",
+    "作業中",
+    "一時停止",
+    "未登録",
+  ];
+  s.threads = states.map((status, i) => ({
+    ...s.threads[1],
+    id: i === 0 ? "a" : "state-" + i,
+    title: "サンプル" + i + " とても長い会話タイトル".repeat(8),
+    progress: status === "unregistered" ? null : progressFixture({ status }),
+  }));
+  await page.goto("/#a");
+  await expect(page.locator(".item")).toHaveCount(6);
+  await expect(page.locator(".session-progress")).not.toHaveAttribute(
+    "open",
+    "",
   );
+  expect(
+    (await page.locator(".session-progress").boundingBox())!.height,
+  ).toBeLessThanOrEqual(38);
+  for (let i = 0; i < states.length; i++) {
+    const icon = page.locator(".item .progress-indicator").nth(i);
+    await expect(icon).toHaveAttribute("data-status", states[i]);
+    await expect(icon).not.toHaveAttribute("title", /.+/);
+    await expect(icon).toHaveAttribute(
+      "aria-label",
+      "作業進捗: " + labels[i] + "（返信状況とは別）",
+    );
+    await expect(icon).toHaveText("");
+    await expect(icon.locator("svg")).toHaveAttribute("viewBox", "0 0 16 16");
+    await expect(
+      icon.locator(i === 3 || i === 5 ? "path" : "circle"),
+    ).toHaveCount(1);
+    const centered = await icon.evaluate((e) => {
+      const box = e.getBoundingClientRect(),
+        svg = e.querySelector("svg")!.getBoundingClientRect();
+      return (
+        Math.abs(box.left + box.width / 2 - (svg.left + svg.width / 2)) < 1 &&
+        Math.abs(box.top + box.height / 2 - (svg.top + svg.height / 2)) < 1
+      );
+    });
+    expect(centered).toBe(true);
+    await expect(icon).toBeVisible();
+  }
+  expect(
+    new Set(
+      await page
+        .locator(".item .progress-indicator")
+        .evaluateAll((es) =>
+          es.slice(0, 3).map((e) => getComputedStyle(e).color),
+        ),
+    ).size,
+  ).toBe(3);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(1440);
+  await page.locator(".item").nth(1).focus();
+  expect(
+    await page
+      .locator(".item .progress-indicator")
+      .nth(1)
+      .evaluate((e) => getComputedStyle(e, "::after").content),
+  ).toBe("none");
+  await page.locator(".item").nth(1).hover();
+  expect(
+    await page
+      .locator(".item .progress-indicator")
+      .nth(1)
+      .evaluate((e) => getComputedStyle(e, "::after").content),
+  ).toBe("none");
+  await expect(page.locator(".session-progress [title]")).toHaveCount(0);
+  await page.locator(".session-progress > summary").focus();
+  await page.screenshot({
+    path: "evidence/compact-progress-states.png",
+    fullPage: true,
+  });
+});
+
+test("progress summary is thin, keyboard operable and retains facts on desktop and mobile", async ({
+  page,
+}) => {
+  const s = await fixture(page);
+  s.threads[0].progress = progressFixture();
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/#a");
+    const row = page.locator(".session-progress > summary");
+    await expect(row).toHaveAttribute(
+      "aria-label",
+      "作業進捗: ユーザー判断待ち。詳細を開く",
+    );
+    await expect(page.locator(".session-progress")).not.toHaveAttribute(
+      "open",
+      "",
+    );
+    expect((await row.boundingBox())!.height).toBeLessThanOrEqual(
+      width === 390 ? 40 : 36,
+    );
+    await expect(row.locator("time")).toHaveAttribute(
+      "datetime",
+      "2026-01-15T09:00:00.000Z",
+    );
+    await page.locator("#message").fill("密度確認の下書き");
+    await row.focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("region", { name: "セッションの進捗" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("案Aと案Bから選んでください", { exact: true }),
+    ).toBeVisible();
+    await expect(row).toHaveAttribute(
+      "aria-label",
+      "作業進捗: ユーザー判断待ち。詳細を閉じる",
+    );
+    await page.screenshot({
+      path: "evidence/compact-progress-" + width + "-expanded.png",
+      fullPage: true,
+    });
+    await page.keyboard.press("Space");
+    await expect(page.locator(".session-progress")).not.toHaveAttribute(
+      "open",
+      "",
+    );
+    await expect(page.locator("#message")).toHaveValue("密度確認の下書き");
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+    await page.screenshot({
+      path: "evidence/compact-progress-" + width + "-collapsed.png",
+      fullPage: true,
+    });
+  }
 });
